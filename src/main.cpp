@@ -2,12 +2,13 @@
 
 #define DEVICE 0x1
 
-const uint8_t enable_pin = 10;
 const uint8_t step_pin = 9;
 const uint8_t dir_pin = 8;
-const long baud_rate = 115200;
+const uint8_t led_green_pin = 2;
+const uint8_t led_red_pin = 3;
+const long baud_rate = 9600;
 const int pulses_per_rev = 400;
-const float mm_per_rev = 0.7;
+const float mm_per_rev = 0.45;
 
 class Syringe
 {
@@ -24,15 +25,25 @@ public:
   Pump(){}
   Syringe syringe;
   float rate;
-  enum State{RUNNING,STOPPED};
+  enum Direction{FORWARD = LOW,REVERSE = HIGH};
+  enum State{RUNNING=true,STOPPED=false};
   State pump_state = STOPPED;
   unsigned long get_period();
-  void set_state();
+  void set_direction(Direction _direction);
+private:
+    Direction pump_dir = FORWARD;
+
 };
 
 unsigned long Pump::get_period()
 {
-  return 1/(rate * (syringe.length / syringe.volume) * (1/mm_per_rev) * (400/60));
+  return (1/(rate * (syringe.length / syringe.volume) * (1/mm_per_rev) * (400/60)))*1e6;
+}
+
+void Pump::set_direction(Direction _direction)
+{
+  pump_dir = _direction;
+  digitalWrite(dir_pin, pump_dir);
 }
 
 Pump * pump = new Pump();
@@ -45,11 +56,7 @@ enum ErrorType
   OK = 0
 };
 
-enum Direction
-{
-  FORWARD = LOW,
-  REVERSE = HIGH
-};
+
 
 enum Commands
 {
@@ -63,10 +70,12 @@ enum Commands
   RESPONSE_END = 0xf,
   STATUS = 0x6,
   DEVICE_NUMBER = 0x7,
-  GET_DEVICE_NUMBER = 0x5
+  GET_DEVICE_NUMBER = 0x5,
+  SET_DIRECTION = 0x8
 
 };
 
+unsigned long  period = 8000;
 
 void send_error(ErrorType _error)
 {
@@ -150,13 +159,13 @@ void serial_handler(uint8_t * _byte_array, int _length)
       else
         pump->pump_state = pump->STOPPED;
 
-      
+      //period = pump->get_period();
       send_error(OK);
       break;
     }
     case GET_DEVICE_NUMBER:
     {
-      if (_byte_array[1] != 1) // Message length is 1 + int byte length is 1 = 2
+      if (_byte_array[1] != 1)
       {
         send_error(INVALID_NUM_OF_BYTES);
         return;
@@ -165,25 +174,44 @@ void serial_handler(uint8_t * _byte_array, int _length)
       send_response(DEVICE_NUMBER, &device_number, 1);
       break;
     }
+    case SET_DIRECTION:
+    {      
+      if (_byte_array[1] != 2) // Message length is 1 + int byte length is 1 = 2
+      {
+        send_error(INVALID_NUM_OF_BYTES);
+        return;
+      }
+      if (_byte_array[3] == 0)
+        pump->set_direction(pump->FORWARD);
+      else
+        pump->set_direction(pump->REVERSE);
+    send_error(OK);
+    }
     default:
       return;
     }
   }  
 }
 
-
+unsigned long t1;
+unsigned long t2;
 void setup() {
-  pinMode(enable_pin, OUTPUT);
   pinMode(step_pin, OUTPUT);
   pinMode(dir_pin, OUTPUT);
+  pinMode(led_green_pin, OUTPUT);
+  pinMode(led_red_pin, OUTPUT);
 
+  digitalWrite(led_red_pin, HIGH);
   Serial.begin(baud_rate);
+  pump->set_direction(pump->FORWARD);
+  digitalWrite(step_pin, LOW);
+
+  t1 = micros();
 }
 
-unsigned long t1 = micros();
-unsigned long  period = 1000;
+
 void loop() {
-  
+
   if(Serial.available() > 0)
   {
     const int read_char = 10;
@@ -195,8 +223,9 @@ void loop() {
   if(micros()-t1 >= period && pump->pump_state == pump->RUNNING)
   {
     digitalWrite(step_pin, HIGH);
-    delayMicroseconds(8);
+    delayMicroseconds(15);
     digitalWrite(step_pin, LOW);
+    t1 = micros();
   }
 
 }
