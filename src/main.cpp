@@ -37,7 +37,7 @@ private:
 
 unsigned long Pump::get_period()
 {
-  return (1/(rate * (syringe.length / syringe.volume) * (1/mm_per_rev) * (400/60)))*1e6;
+  return static_cast<unsigned long>((1/(rate * (syringe.length / syringe.volume) * (1/mm_per_rev) * (400/60)))*1e6);
 }
 
 void Pump::set_direction(Direction _direction)
@@ -159,7 +159,7 @@ void serial_handler(uint8_t * _byte_array, int _length)
       else
         pump->pump_state = pump->STOPPED;
 
-      //period = pump->get_period();
+      period = pump->get_period();
       send_error(OK);
       break;
     }
