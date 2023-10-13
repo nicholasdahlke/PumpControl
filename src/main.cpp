@@ -7,8 +7,8 @@ const uint8_t dir_pin = 8;
 const uint8_t led_green_pin = 2;
 const uint8_t led_red_pin = 3;
 const long baud_rate = 9600;
-const int pulses_per_rev = 400;
-const float mm_per_rev = 0.45;
+const int pulses_per_rev = 12800;
+const float mm_per_rev = 0.028785798816568;
 
 class Syringe
 {
@@ -25,7 +25,7 @@ public:
   Pump(){}
   Syringe syringe;
   float rate;
-  enum Direction{FORWARD = LOW,REVERSE = HIGH};
+  enum Direction{FORWARD = HIGH,REVERSE = LOW};
   enum State{RUNNING=true,STOPPED=false};
   State pump_state = STOPPED;
   unsigned long get_period();
@@ -71,7 +71,9 @@ enum Commands
   STATUS = 0x6,
   DEVICE_NUMBER = 0x7,
   GET_DEVICE_NUMBER = 0x5,
-  SET_DIRECTION = 0x8
+  SET_DIRECTION = 0x8,
+  IS_PUMP_RUNNING = 0x9,
+  PUMP_STATE = 0xA
 
 };
 
@@ -185,7 +187,17 @@ void serial_handler(uint8_t * _byte_array, int _length)
         pump->set_direction(pump->FORWARD);
       else
         pump->set_direction(pump->REVERSE);
-    send_error(OK);
+      send_error(OK);
+    }
+    case IS_PUMP_RUNNING:
+    {
+      if (_byte_array[1] != 1)
+      {
+        send_error(INVALID_NUM_OF_BYTES);
+        return;
+      }
+      uint8_t device_state = pump->pump_state;
+      send_response(PUMP_STATE, &device_state, 1);
     }
     default:
       return;
@@ -221,6 +233,7 @@ void loop() {
     serial_handler(&recv[0], length);
   }
   if(micros()-t1 >= period && pump->pump_state == pump->RUNNING)
+  //if(micros() - t1 >= period)
   {
     digitalWrite(step_pin, HIGH);
     delayMicroseconds(15);
